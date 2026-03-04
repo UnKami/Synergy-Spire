@@ -137,6 +137,13 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
 
       let logMsg = `${player.name} played ${card.name}.`;
 
+      newState.lastAction = {
+        playerId,
+        targetId,
+        cardName: card.name,
+        timestamp: Date.now(),
+      };
+
       // Apply card effects
       switch (card.id) {
         case 'strike': {

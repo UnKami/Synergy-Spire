@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGameState } from '../context/GameStateContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Heart, Zap, Target, Skull, Activity, ArrowRight, User, Users, Gem } from 'lucide-react';
 import { Player, Enemy, CardInstance, RelicData } from '../types';
+import { CARD_DICTIONARY } from '../constants';
 
 const Tooltip = ({ children, content }: { children: React.ReactNode, content: React.ReactNode }) => {
   return (
@@ -19,11 +20,35 @@ export default function CombatArena() {
   const { state, dispatch, playerId, roomId } = useGameState();
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [hoveredTargetId, setHoveredTargetId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
 
   const localPlayerId = playerId || 'P1';
   const activePlayer = state.players[localPlayerId];
   const otherPlayerId = localPlayerId === 'P1' ? 'P2' : 'P1';
   const otherPlayer = state.players[otherPlayerId];
+
+  useEffect(() => {
+    if (state.lastAction) {
+      const { playerId: actorId, targetId, cardName, timestamp } = state.lastAction;
+      
+      const cardData = Object.values(CARD_DICTIONARY).find(c => c.name === cardName);
+      const isPartyCard = cardData?.target === 'Party';
+      const isTargetingOtherPlayer = targetId && targetId !== actorId && state.players[targetId];
+
+      if (isTargetingOtherPlayer || isPartyCard) {
+        const actorName = state.players[actorId].name;
+        const targetName = isTargetingOtherPlayer ? state.players[targetId!].name : 'the party';
+        
+        setToast({
+          id: timestamp,
+          message: `${actorName} used ${cardName} on ${targetName}!`
+        });
+        
+        const timer = setTimeout(() => setToast(null), 3000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [state.lastAction, state.players]);
 
   const handleCardClick = (card: CardInstance) => {
     if (activePlayer.energy < card.cost || activePlayer.readyToEndTurn) return;
@@ -176,12 +201,18 @@ export default function CombatArena() {
           ${isHovered && isTargetable ? 'ring-2 ring-green-500/50' : ''}
           ${player.isDowned ? 'opacity-50 grayscale' : ''}
           ${isSelf ? 'ring-1 ring-zinc-500 shadow-[0_0_20px_rgba(255,255,255,0.05)]' : ''}
+          ${player.readyToEndTurn && !player.isDowned ? 'ring-2 ring-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.2)] border-blue-500/50' : ''}
         `}
         onClick={() => handleTargetClick(player.id, isSelf ? 'self' : 'ally')}
         onMouseEnter={() => setHoveredTargetId(player.id)}
         onMouseLeave={() => setHoveredTargetId(null)}
         layout
       >
+        {player.readyToEndTurn && !player.isDowned && (
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-900/80 text-blue-300 text-[9px] font-mono px-2 py-0.5 rounded border border-blue-700/50 tracking-widest uppercase shadow-lg z-10 whitespace-nowrap">
+            Waiting
+          </div>
+        )}
         <div className="flex justify-between items-center mb-2">
           <div className="text-sm font-bold font-serif tracking-wider text-zinc-300 flex items-center">
             {isSelf ? <User size={14} className="mr-1 text-zinc-400" /> : <Users size={14} className="mr-1 text-zinc-500" />}
@@ -366,11 +397,14 @@ export default function CombatArena() {
         <div className="absolute right-8 top-1/2 -translate-y-1/2">
           <button
             onClick={handleEndTurn}
-            className="group relative px-8 py-4 bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-2xl hover:border-zinc-500 transition-colors"
+            disabled={activePlayer.readyToEndTurn}
+            className={`group relative px-8 py-4 bg-zinc-900 border ${activePlayer.readyToEndTurn ? 'border-zinc-800 opacity-50 cursor-not-allowed' : 'border-zinc-700 hover:border-zinc-500'} rounded-xl overflow-hidden shadow-2xl transition-colors`}
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-zinc-800 to-zinc-900 opacity-0 group-hover:opacity-100 transition-opacity" />
+            {!activePlayer.readyToEndTurn && <div className="absolute inset-0 bg-gradient-to-r from-zinc-800 to-zinc-900 opacity-0 group-hover:opacity-100 transition-opacity" />}
             <span className="relative text-lg font-serif font-bold tracking-widest text-zinc-300 group-hover:text-white flex items-center">
-              END TURN <ArrowRight size={20} className="ml-2" />
+              {activePlayer.readyToEndTurn ? 'WAITING FOR 2ND PLAYER' : (
+                <>END TURN <ArrowRight size={20} className="ml-2" /></>
+              )}
             </span>
           </button>
         </div>
@@ -383,6 +417,22 @@ export default function CombatArena() {
         </div>
 
       </div>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: -50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -20, x: '-50%' }}
+            className="absolute top-24 left-1/2 z-50 bg-zinc-900 border border-zinc-700 text-zinc-200 px-6 py-3 rounded-xl shadow-2xl flex items-center space-x-3"
+          >
+            <Zap size={18} className="text-yellow-400" />
+            <span className="font-serif tracking-wide">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Combat Log Overlay (Optional, for debugging/info) */}
       <div className="absolute left-4 bottom-80 w-64 max-h-48 overflow-y-auto bg-zinc-950/80 border border-zinc-800 rounded p-2 text-xs font-mono text-zinc-500 z-10 scrollbar-thin scrollbar-thumb-zinc-700">

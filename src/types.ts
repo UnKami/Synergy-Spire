@@ -90,6 +90,12 @@ export interface GameState {
   activePlayerId: string;
   combatLog: string[];
   draftCards: CardData[];
+  lastAction?: {
+    playerId: string;
+    targetId?: string;
+    cardName: string;
+    timestamp: number;
+  };
 }
 
 export type GameAction =
